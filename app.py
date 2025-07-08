@@ -74,24 +74,26 @@ def process_pdf(input_path, output_path):
     # Viền ngoài hóa đơn
     page.draw_rect([30, 20, 565, 800], color=(0.2,0.2,0.2), width=1)
 
+    # Đăng ký font Unicode với tên F0
+    page.insert_font(fontname="F0", fontfile=FONT_PATH)
     # Tiêu đề căn giữa, màu nổi bật
-    page.insert_textbox([180, 35, 540, 60], "HÓA ĐƠN", fontsize=18, fontfile=FONT_PATH, color=(1,0,0), render_mode=3, align=1)
-    page.insert_textbox([180, 55, 540, 75], "GIÁ TRỊ GIA TĂNG", fontsize=13, fontfile=FONT_PATH, color=(1,0,0), align=1)
+    page.insert_textbox([180, 35, 540, 60], "HÓA ĐƠN", fontsize=18, fontname="F0", color=(1,0,0), render_mode=3, align=1)
+    page.insert_textbox([180, 55, 540, 75], "GIÁ TRỊ GIA TĂNG", fontsize=13, fontname="F0", color=(1,0,0), align=1)
     # Mẫu số, ký hiệu, số hóa đơn
-    page.insert_textbox([430, 30, 590, 45], f"Mẫu số : {invoice_code}", fontsize=9, fontfile=FONT_PATH, color=(0,0,0), align=2)
-    page.insert_textbox([430, 45, 590, 60], f"Ký hiệu : {invoice_symbol}", fontsize=9, fontfile=FONT_PATH, color=(0,0,0), align=2)
-    page.insert_textbox([430, 60, 590, 75], f"Số : {invoice_number}", fontsize=9, fontfile=FONT_PATH, color=(1,0,0), align=2)
+    page.insert_textbox([430, 30, 590, 45], f"Mẫu số : {invoice_code}", fontsize=9, fontname="F0", color=(0,0,0), align=2)
+    page.insert_textbox([430, 45, 590, 60], f"Ký hiệu : {invoice_symbol}", fontsize=9, fontname="F0", color=(0,0,0), align=2)
+    page.insert_textbox([430, 60, 590, 75], f"Số : {invoice_number}", fontsize=9, fontname="F0", color=(1,0,0), align=2)
 
     # Thông tin công ty căn trái
-    page.insert_text((50, 90), company, fontsize=11, fontfile=FONT_PATH, color=(0,0,0), render_mode=3)
-    page.insert_text((50, 110), f"Mã số thuế : {mst}", fontsize=10, fontfile=FONT_PATH)
-    page.insert_text((50, 125), address, fontsize=9, fontfile=FONT_PATH)
-    page.insert_text((50, 140), f"Số tài khoản : {account}", fontsize=9, fontfile=FONT_PATH)
+    page.insert_text((50, 90), company, fontsize=11, fontname="F0", color=(0,0,0), render_mode=3)
+    page.insert_text((50, 110), f"Mã số thuế : {mst}", fontsize=10, fontname="F0")
+    page.insert_text((50, 125), address, fontsize=9, fontname="F0")
+    page.insert_text((50, 140), f"Số tài khoản : {account}", fontsize=9, fontname="F0")
     # QR code placeholder (vẽ khung, bạn có thể thay bằng ảnh QR thật)
     page.draw_rect([420, 90, 470, 140], color=(0.7,0.7,0.7), width=0.7)
-    page.insert_text((475, 100), "QR", fontsize=10, fontfile=FONT_PATH, color=(0.5,0.5,0.5))
+    page.insert_text((475, 100), "QR", fontsize=10, fontname="F0", color=(0.5,0.5,0.5))
     # Ngày tháng
-    page.insert_text((430, 110), f"Ngày ... tháng ... năm ...", fontsize=9, fontfile=FONT_PATH)
+    page.insert_text((430, 110), f"Ngày ... tháng ... năm ...", fontsize=9, fontname="F0")
 
     # Vẽ bảng
     x0, y0 = 40, 180
@@ -101,7 +103,7 @@ def process_pdf(input_path, output_path):
     page.draw_rect([x0, y0, x0+sum(col_widths), y0+row_height], color=(0.2,0.2,0.2), fill=(0.93,0.93,0.93), width=1)
     x = x0
     for i, header in enumerate(table_headers):
-        page.insert_text((x+2, y0+7), header, fontsize=10, fontfile=FONT_PATH, color=(0,0,0), render_mode=3)
+        page.insert_text((x+2, y0+7), header, fontsize=10, fontname="F0", color=(0,0,0), render_mode=3)
         x += col_widths[i]
     # Vẽ dòng header
     page.draw_rect([x0, y0, x0+sum(col_widths), y0+row_height], color=(0.2,0.2,0.2), width=1)
@@ -110,7 +112,7 @@ def process_pdf(input_path, output_path):
         y = y0 + row_height * (row_idx+1)
         x = x0
         for col_idx, cell in enumerate(row):
-            page.insert_text((x+2, y+7), cell, fontsize=10, fontfile=FONT_PATH, color=(0,0,0))
+            page.insert_text((x+2, y+7), cell, fontsize=10, fontname="F0", color=(0,0,0))
             x += col_widths[col_idx]
         page.draw_rect([x0, y, x0+sum(col_widths), y+row_height], color=(0.7,0.7,0.7), width=0.5)
     # Vẽ các đường dọc
@@ -122,19 +124,26 @@ def process_pdf(input_path, output_path):
         x += w
     page.draw_line((x, y1), (x, y2), color=(0.7,0.7,0.7), width=0.5)
 
+    # Sau khi vẽ bảng, chèn ảnh watermark tax.jpg vào giữa trang
+    tax_img_path = os.path.join(os.path.dirname(__file__), "tax.jpg")
+    if os.path.exists(tax_img_path):
+        # Vị trí và kích thước watermark (giữa trang, lớn)
+        # (x0, y0, x1, y1) = (100, 260, 500, 600) có thể điều chỉnh cho phù hợp
+        page.insert_image([100, 260, 500, 600], filename=tax_img_path, overlay=False, keep_proportion=True)
+
     # Thông tin tổng tiền, VAT, tổng thanh toán
     y_sum = y0 + row_height*(len(table_data)+1) + 15
-    page.insert_text((x0, y_sum), "Cộng tiền hàng: ........................................", fontsize=10, fontfile=FONT_PATH)
-    page.insert_text((x0, y_sum+18), "Thuế suất GTGT: ............. Tiền thuế GTGT: .............", fontsize=10, fontfile=FONT_PATH)
-    page.insert_text((x0, y_sum+36), "Tổng cộng tiền thanh toán: ........................................", fontsize=10, fontfile=FONT_PATH)
+    page.insert_text((x0, y_sum), "Cộng tiền hàng: ........................................", fontsize=10, fontname="F0")
+    page.insert_text((x0, y_sum+18), "Thuế suất GTGT: ............. Tiền thuế GTGT: .............", fontsize=10, fontname="F0")
+    page.insert_text((x0, y_sum+36), "Tổng cộng tiền thanh toán: ........................................", fontsize=10, fontname="F0")
     # Chữ ký style đẹp, chú thích đỏ
     y_sign = y_sum + 70
-    page.insert_text((x0, y_sign), "Người mua hàng", fontsize=10, fontfile=FONT_PATH, render_mode=3)
-    page.insert_text((x0+200, y_sign), "Người bán hàng", fontsize=10, fontfile=FONT_PATH, render_mode=3)
-    page.insert_text((x0+400, y_sign), "Thủ trưởng đơn vị", fontsize=10, fontfile=FONT_PATH, render_mode=3)
-    page.insert_text((x0, y_sign+18), "(Ký, ghi rõ họ tên)", fontsize=9, fontfile=FONT_PATH, color=(1,0,0))
-    page.insert_text((x0+200, y_sign+18), "(Ký, ghi rõ họ tên)", fontsize=9, fontfile=FONT_PATH, color=(1,0,0))
-    page.insert_text((x0+400, y_sign+18), "(Ký, ghi rõ họ tên)", fontsize=9, fontfile=FONT_PATH, color=(1,0,0))
+    page.insert_text((x0, y_sign), "Người mua hàng", fontsize=10, fontname="F0", render_mode=3)
+    page.insert_text((x0+200, y_sign), "Người bán hàng", fontsize=10, fontname="F0", render_mode=3)
+    page.insert_text((x0+400, y_sign), "Thủ trưởng đơn vị", fontsize=10, fontname="F0", render_mode=3)
+    page.insert_text((x0, y_sign+18), "(Ký, ghi rõ họ tên)", fontsize=9, fontname="F0", color=(1,0,0))
+    page.insert_text((x0+200, y_sign+18), "(Ký, ghi rõ họ tên)", fontsize=9, fontname="F0", color=(1,0,0))
+    page.insert_text((x0+400, y_sign+18), "(Ký, ghi rõ họ tên)", fontsize=9, fontname="F0", color=(1,0,0))
     # Đóng file
     doc.save(output_path)
     doc.close()
