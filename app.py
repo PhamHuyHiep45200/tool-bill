@@ -247,7 +247,14 @@ def process_pdf(input_path, output_path, products=None):
     # Bảng hàng hóa
     y_table = y + 25
     y_table = check_new_page(y_table)  # Kiểm tra trang mới
-    col_widths = [30, 220, 60, 60, 80, 100]
+    
+    # Tính toán lại chiều rộng cột để vừa với lề (từ x0=30 đến 565)
+    available_width = 535  # 565 - 30 = 535px
+    col_widths = [25, 180, 50, 50, 70, 80]  # Giảm chiều rộng các cột
+    # Điều chỉnh cột tên hàng hóa để vừa với không gian
+    remaining_width = available_width - sum(col_widths)
+    col_widths[1] += remaining_width  # Cột tên hàng hóa được ưu tiên
+    
     row_height = 28
     header_height = 32
     subheader_height = 16
@@ -367,9 +374,9 @@ def process_pdf(input_path, output_path, products=None):
     for page_num in range(len(doc)):
         current_page_obj = doc[page_num]
         current_page_obj.insert_font(fontname="F0", fontfile=FONT_PATH)
-        # Footer ở cuối trang (Y=800) cho tất cả các trang
-        current_page_obj.insert_textbox([x0, 800, x0+sum(col_widths), 815], "Tra cứu Hóa đơn điện tử tại: http://tracuu.hoadon.vn  Mã tra cứu: A596F098C9", fontsize=9, fontname="F0", color=(0,0,0.7), align=1)
-        current_page_obj.insert_textbox([x0, 815, x0+sum(col_widths), 830], "(Tổ chức truyền nhận và cung cấp giải pháp HĐĐT: Công ty CP công nghệ tin học EFY Việt Nam, MST: 0102519041, www.efy.com.vn, ĐT: 19006142)", fontsize=8, fontname="F0", color=(0,0,0), align=1)
+        # Footer ở cuối trang (Y=800) cho tất cả các trang - sử dụng chiều rộng cố định
+        current_page_obj.insert_textbox([x0, 800, 565, 815], "Tra cứu Hóa đơn điện tử tại: http://tracuu.hoadon.vn  Mã tra cứu: A596F098C9", fontsize=9, fontname="F0", color=(0,0,0.7), align=1)
+        current_page_obj.insert_textbox([x0, 815, 565, 830], "(Tổ chức truyền nhận và cung cấp giải pháp HĐĐT: Công ty CP công nghệ tin học EFY Việt Nam, MST: 0102519041, www.efy.com.vn, ĐT: 19006142)", fontsize=8, fontname="F0", color=(0,0,0), align=1)
     # Đóng file
     doc.save(output_path)
     doc.close()
