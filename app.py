@@ -141,6 +141,7 @@ def process_pdf(input_path, output_path, products=None):
     total_payment = "32.400.000"
     total_text = "Ba mươi hai triệu, bốn trăm nghìn đồng chẵn"
     signer = "Nguyễn Tiến Khoa"
+    
     # Nếu có products thì lấy dữ liệu từ products
     if products and len(products) > 0:
         table_data = []
@@ -169,25 +170,43 @@ def process_pdf(input_path, output_path, products=None):
         table_data = [
             ["1", product, unit, quantity, unit_price, amount],
         ] + [["", "", "", "", "", ""] for _ in range(9)]
+    
     # Tạo file PDF mới
     doc = fitz.open()
     page = doc.new_page(width=595, height=842)  # A4 size
-    # Viền ngoài hóa đơn
-    page.draw_rect([20, 20, 575, 822], color=(0,0,1), width=1.2)
-    # Header logo và mã số hóa đơn
-    # Logo (nếu có)
-    logo_path = os.path.join(os.path.dirname(__file__), "tax.jpg")
-    if os.path.exists(logo_path):
-        page.insert_image([30, 30, 120, 80], filename=logo_path)
-    # Tiêu đề hóa đơn
+    current_page = 0
+    
+    def check_new_page(y_position, margin=50):
+        """Kiểm tra xem có cần tạo trang mới không"""
+        nonlocal page, current_page
+        if y_position > 750:  # Nếu vị trí Y vượt quá 750 thì tạo trang mới
+            page = doc.new_page(width=595, height=842)
+            current_page += 1
+            # Load font cho trang mới
+            page.insert_font(fontname="F0", fontfile=FONT_PATH)
+            return 50  # Bắt đầu từ vị trí Y = 50 trên trang mới
+        return y_position
+    # Load font cho tất cả các trang
     page.insert_font(fontname="F0", fontfile=FONT_PATH)
-    page.insert_textbox([120, 30, 420, 55], "HÓA ĐƠN GIÁ TRỊ GIA TĂNG", fontsize=15, fontname="F0", color=(0,0,0.7), render_mode=2, align=1)
-    page.insert_textbox([120, 55, 420, 75], "(VAT INVOICE)", fontsize=10, fontname="F0", color=(0,0,0.7), align=1)
-    # Mã số, ký hiệu, số hóa đơn
-    page.insert_textbox([430, 30, 570, 45], f"Ký hiệu (Serial No): {invoice_code}", fontsize=9, fontname="F0", color=(1,0,0), align=2)
-    page.insert_textbox([430, 45, 570, 60], f"Số: {invoice_number}", fontsize=12, fontname="F0", color=(1,0,0), align=2)
-
-    y = 90
+    
+    # Viền ngoài hóa đơn (chỉ vẽ trên trang đầu)
+    if current_page == 0:
+        page.draw_rect([20, 20, 575, 822], color=(0,0,1), width=1.2)
+        # Header logo và mã số hóa đơn
+        # Logo (nếu có)
+        logo_path = os.path.join(os.path.dirname(__file__), "tax.jpg")
+        if os.path.exists(logo_path):
+            page.insert_image([30, 30, 120, 80], filename=logo_path)
+        # Tiêu đề hóa đơn
+        page.insert_textbox([120, 30, 420, 55], "HÓA ĐƠN GIÁ TRỊ GIA TĂNG", fontsize=15, fontname="F0", color=(0,0,0.7), render_mode=2, align=1)
+        page.insert_textbox([120, 55, 420, 75], "(VAT INVOICE)", fontsize=10, fontname="F0", color=(0,0,0.7), align=1)
+        # Mã số, ký hiệu, số hóa đơn
+        page.insert_textbox([430, 30, 570, 45], f"Ký hiệu (Serial No): {invoice_code}", fontsize=9, fontname="F0", color=(1,0,0), align=2)
+        page.insert_textbox([430, 45, 570, 60], f"Số: {invoice_number}", fontsize=12, fontname="F0", color=(1,0,0), align=2)
+        y = 90
+    else:
+        # Trên trang mới, bắt đầu từ vị trí cao hơn
+        y = 50
         
     # Divider trước thông tin công ty
     y += 10
@@ -207,11 +226,12 @@ def process_pdf(input_path, output_path, products=None):
     page.draw_line((30, y), (565, y), color=(0.7,0.7,0.7), width=0.5)
     y += 15
 
-    # QR code - tạo từ thông tin hóa đơn (sử dụng cấu hình đã test thành công)
-    qr_data = f"HOADON-{invoice_number}-{total_payment}"
-    qr_bytes = create_simple_qr_code(qr_data, size=80)
-    if qr_bytes:
-        page.insert_image([480, 180, 560, 260], stream=qr_bytes, overlay=True, keep_proportion=True)
+    # QR code - tạo từ thông tin hóa đơn (chỉ trên trang đầu)
+    if current_page == 0:
+        qr_data = f"HOADON-{invoice_number}-{total_payment}"
+        qr_bytes = create_simple_qr_code(qr_data, size=80)
+        if qr_bytes:
+            page.insert_image([480, 120, 560, 200], stream=qr_bytes, overlay=True, keep_proportion=True)
     # Thông tin công ty bán
 
 
@@ -226,6 +246,7 @@ def process_pdf(input_path, output_path, products=None):
 
     # Bảng hàng hóa
     y_table = y + 25
+    y_table = check_new_page(y_table)  # Kiểm tra trang mới
     col_widths = [30, 220, 60, 60, 80, 100]
     row_height = 28
     header_height = 32
@@ -261,6 +282,7 @@ def process_pdf(input_path, output_path, products=None):
     # Dữ liệu hàng hóa (căn giữa dọc)
     for row_idx, row in enumerate(table_data):
         y = y0 + header_height + subheader_height + row_height * row_idx
+        y = check_new_page(y)  # Kiểm tra trang mới cho mỗi dòng
         x = x0
         for col_idx, cell in enumerate(row):
             page.insert_textbox([x, y + vertical_align_small, x+col_widths[col_idx], y+row_height], cell, fontsize=10, fontname="F0", color=(0,0,0), align=1)
@@ -268,6 +290,7 @@ def process_pdf(input_path, output_path, products=None):
         page.draw_rect([x0, y, x0+sum(col_widths), y+row_height], color=(0.5,0.5,0.5), width=0.7)
     # Các dòng tổng hợp trong bảng (không kẻ dọc bên trong, chỉ giữ kẻ dọc ngoài cùng)
     y_sum = y0 + header_height + subheader_height + row_height*len(table_data)
+    y_sum = check_new_page(y_sum)  # Kiểm tra trang mới cho phần tổng hợp
     # Cộng tiền hàng
     page.draw_line((x0, y_sum), (x0+sum(col_widths), y_sum), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum+row_height), (x0+sum(col_widths), y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
@@ -278,6 +301,7 @@ def process_pdf(input_path, output_path, products=None):
     page.insert_textbox([x0+sum(col_widths)-100, y_sum + vertical_align_small, x0+sum(col_widths), y_sum+row_height], amount, fontsize=10, fontname="F0", align=2)
     # Thuế suất GTGT và Tiền thuế GTGT
     y_sum += row_height
+    y_sum = check_new_page(y_sum)  # Kiểm tra trang mới
     page.draw_line((x0, y_sum), (x0+sum(col_widths), y_sum), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum+row_height), (x0+sum(col_widths), y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum), (x0, y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
@@ -287,6 +311,7 @@ def process_pdf(input_path, output_path, products=None):
     page.insert_textbox([x0+sum(col_widths)-100, y_sum + vertical_align_small, x0+sum(col_widths), y_sum+row_height], vat_amount, fontsize=10, fontname="F0", align=2)
     # Tổng tiền thanh toán
     y_sum += row_height
+    y_sum = check_new_page(y_sum)  # Kiểm tra trang mới
     page.draw_line((x0, y_sum), (x0+sum(col_widths), y_sum), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum+row_height), (x0+sum(col_widths), y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum), (x0, y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
@@ -295,6 +320,7 @@ def process_pdf(input_path, output_path, products=None):
     page.insert_textbox([x0+sum(col_widths)-100, y_sum + vertical_align_small, x0+sum(col_widths), y_sum+row_height], total_payment, fontsize=10, fontname="F0", render_mode=2, align=2)
     # Số tiền bằng chữ
     y_sum += row_height
+    y_sum = check_new_page(y_sum)  # Kiểm tra trang mới
     page.draw_line((x0, y_sum), (x0+sum(col_widths), y_sum), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum+row_height), (x0+sum(col_widths), y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum), (x0, y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
@@ -314,6 +340,7 @@ def process_pdf(input_path, output_path, products=None):
         page.insert_image([x0+30, y0+header_height+subheader_height+30, x0+sum(col_widths)-30, y0+header_height+subheader_height+row_height*7], filename=tax_img_path, overlay=False, keep_proportion=True)
     # Chữ ký (style lại giống mẫu)
     y_sign = y_sum + 50
+    y_sign = check_new_page(y_sign)  # Kiểm tra trang mới cho phần chữ ký
     sign_col_width = 250
     # Người mua hàng
     page.insert_textbox([x0, y_sign, x0+sign_col_width, y_sign+20], "Người mua hàng(Buyer)", fontsize=12, fontname="F0", color=(0,0,0), render_mode=2, align=1)
@@ -329,16 +356,20 @@ def process_pdf(input_path, output_path, products=None):
     # Box Signature Valid (di chuyển xuống dưới phần ký tên seller, sát lề phải)
     box_x0 = x0+sum(col_widths)-210
     box_y0 = y_sign+90
+    box_y0 = check_new_page(box_y0)  # Kiểm tra trang mới cho Signature Valid
     box_x1 = box_x0+200
     box_y1 = box_y0+60
     page.draw_rect([box_x0, box_y0, box_x1, box_y1], color=(0.2,0.6,0.2), fill=(0.95,1,0.95), width=1)
     page.insert_textbox([box_x0+5, box_y0+5, box_x1-5, box_y0+22], "Signature Valid", fontsize=11, fontname="F0", color=(0,0.5,0), render_mode=2, align=0)
     page.insert_textbox([box_x0+5, box_y0+22, box_x1-5, box_y0+38], "Ký bởi: CÔNG TY TNHH THƯƠNG MẠI - DỊCH VỤ KENJO VIỆT NAM", fontsize=10, fontname="F0", color=(1,0,0), render_mode=2, align=0)
     page.insert_textbox([box_x0+5, box_y0+38, box_x1-5, box_y0+54], "Ký ngày: 07/02/2022    09:35:53", fontsize=10, fontname="F0", color=(1,0,0), render_mode=2, align=0)
-    # Dòng tra cứu hóa đơn và chú thích nhỏ cuối trang
-    y_footer = 800
-    page.insert_textbox([x0, y_footer, x0+sum(col_widths), y_footer+15], "Tra cứu Hóa đơn điện tử tại: http://tracuu.hoadon.vn  Mã tra cứu: A596F098C9", fontsize=9, fontname="F0", color=(0,0,0.7), align=1)
-    page.insert_textbox([x0, y_footer+15, x0+sum(col_widths), y_footer+30], "(Tổ chức truyền nhận và cung cấp giải pháp HĐĐT: Công ty CP công nghệ tin học EFY Việt Nam, MST: 0102519041, www.efy.com.vn, ĐT: 19006142)", fontsize=8, fontname="F0", color=(0,0,0), align=1)
+    # Thêm footer cho tất cả các trang (vị trí cố định ở cuối trang)
+    for page_num in range(len(doc)):
+        current_page_obj = doc[page_num]
+        current_page_obj.insert_font(fontname="F0", fontfile=FONT_PATH)
+        # Footer ở cuối trang (Y=800) cho tất cả các trang
+        current_page_obj.insert_textbox([x0, 800, x0+sum(col_widths), 815], "Tra cứu Hóa đơn điện tử tại: http://tracuu.hoadon.vn  Mã tra cứu: A596F098C9", fontsize=9, fontname="F0", color=(0,0,0.7), align=1)
+        current_page_obj.insert_textbox([x0, 815, x0+sum(col_widths), 830], "(Tổ chức truyền nhận và cung cấp giải pháp HĐĐT: Công ty CP công nghệ tin học EFY Việt Nam, MST: 0102519041, www.efy.com.vn, ĐT: 19006142)", fontsize=8, fontname="F0", color=(0,0,0), align=1)
     # Đóng file
     doc.save(output_path)
     doc.close()
