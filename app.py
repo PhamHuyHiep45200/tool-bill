@@ -2,6 +2,10 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import fitz  # PyMuPDF
 import os
+import qrcode
+from PIL import Image
+import io
+from datetime import datetime
 
 # Đường dẫn font Unicode (DejaVuSans)
 FONT_PATH = os.path.join(os.path.dirname(__file__), "DejaVuSans.ttf")
@@ -33,6 +37,59 @@ def extract_info_from_pdf(pdf_path):
         return name, product, price
     except Exception:
         return "0", "0", "0"
+
+def create_qr_code(data, size=64):
+    """Tạo QR code từ dữ liệu và trả về dưới dạng bytes"""
+    try:
+        # Tạo QR code đơn giản
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=2,
+            border=2,
+        )
+        qr.add_data(data)
+        qr.make(fit=True)
+        
+        # Tạo QR code image
+        qr_image = qr.make_image(fill_color="black", back_color="white")
+        
+        # Resize về kích thước mong muốn
+        qr_image = qr_image.resize((size, size), Image.Resampling.NEAREST)
+        
+        # Chuyển thành bytes
+        img_byte_arr = io.BytesIO()
+        qr_image.save(img_byte_arr, format='PNG')
+        img_byte_arr.seek(0)
+        
+        return img_byte_arr.getvalue()
+    except Exception as e:
+        print(f"Lỗi tạo QR code: {e}")
+        return None
+
+def create_simple_qr_code(text, size=80):
+    """Tạo QR code đơn giản (đã test thành công)"""
+    try:
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=2,
+            border=2,
+        )
+        qr.add_data(text)
+        qr.make(fit=True)
+        
+        qr_image = qr.make_image(fill_color="black", back_color="white")
+        qr_image = qr_image.resize((size, size), Image.Resampling.NEAREST)
+        
+        img_byte_arr = io.BytesIO()
+        qr_image.save(img_byte_arr, format='PNG')
+        img_byte_arr.seek(0)
+        
+        return img_byte_arr.getvalue()
+    except Exception as e:
+        print(f"Lỗi tạo QR code: {e}")
+        return None
 
 def process_pdf(input_path, output_path):
     # Dữ liệu mẫu hóa đơn (có thể lấy từ extract_info_from_pdf nếu muốn động)
@@ -75,11 +132,14 @@ def process_pdf(input_path, output_path):
     # Mã số, ký hiệu, số hóa đơn
     page.insert_textbox([430, 30, 570, 45], f"Ký hiệu (Serial No): {invoice_code}", fontsize=9, fontname="F0", color=(1,0,0), align=2)
     page.insert_textbox([430, 45, 570, 60], f"Số: {invoice_number}", fontsize=12, fontname="F0", color=(1,0,0), align=2)
-    # QR code (placeholder)
-    page.draw_rect([500, 65, 570, 135], color=(0.7,0.7,0.7), width=0.7)
-    page.insert_text((505, 90), "QR", fontsize=10, fontname="F0", color=(0.5,0.5,0.5))
-    # Thông tin công ty bán
+
     y = 90
+        
+    # Divider trước thông tin công ty
+    y += 10
+    page.draw_line((30, y), (565, y), color=(0.7,0.7,0.7), width=0.5)
+    y += 15
+
     page.insert_text((30, y), company, fontsize=11, fontname="F0", color=(0,0,0), render_mode=2)
     y += 18
     page.insert_text((30, y), f"Mã số thuế (Tax code): {mst}", fontsize=10, fontname="F0")
@@ -87,8 +147,21 @@ def process_pdf(input_path, output_path):
     page.insert_text((30, y), f"Địa chỉ (Address): {address}", fontsize=9, fontname="F0")
     y += 15
     # page.insert_text((30, y), f"Số tài khoản: {account}", fontsize=9, fontname="F0")
-    # Thông tin người mua
+        
+    # Divider trước thông tin khách hàng
+    y += 10
+    page.draw_line((30, y), (565, y), color=(0.7,0.7,0.7), width=0.5)
     y += 15
+
+    # QR code - tạo từ thông tin hóa đơn (sử dụng cấu hình đã test thành công)
+    qr_data = f"HOADON-{invoice_number}-{total_payment}"
+    qr_bytes = create_simple_qr_code(qr_data, size=80)
+    if qr_bytes:
+        page.insert_image([480, 180, 560, 260], stream=qr_bytes, overlay=True, keep_proportion=True)
+    # Thông tin công ty bán
+
+
+    # Thông tin người mua
     page.insert_text((30, y), f"Tên đơn vị (Buyer): {customer}", fontsize=10, fontname="F0")
     y += 15
     page.insert_text((30, y), f"Mã số thuế (Tax code): {customer_mst}", fontsize=9, fontname="F0")
@@ -96,12 +169,17 @@ def process_pdf(input_path, output_path):
     page.insert_text((30, y), f"Địa chỉ (Address): {customer_address}", fontsize=9, fontname="F0")
     y += 15
     page.insert_text((30, y), f"Hình thức thanh toán (Payment): {payment_method}", fontsize=9, fontname="F0")
+
     # Bảng hàng hóa
     y_table = y + 25
     col_widths = [30, 220, 60, 60, 80, 100]
     row_height = 28
     header_height = 32
     subheader_height = 16
+    font_size_header = 10
+    font_size_text = 8
+    vertical_align_big = (row_height - font_size_header) / 2
+    vertical_align_small = (row_height - font_size_text) / 2
     table_headers = [
         ("STT", "(No)"),
         ("Tên hàng hóa, dịch vụ", "(Description)"),
@@ -129,7 +207,7 @@ def process_pdf(input_path, output_path):
     # Vẽ tiêu đề lớn (căn giữa dọc)
     x = x0
     for i, (header, subheader) in enumerate(table_headers):
-        page.insert_textbox([x, y0, x+col_widths[i], y0+header_height], header, fontsize=10, fontname="F0", color=(0,0,0.7), render_mode=2, align=1)
+        page.insert_textbox([x, y0 + vertical_align_big, x+col_widths[i], y0+header_height], header, fontsize=10, fontname="F0", color=(0,0,0.7), render_mode=2, align=1)
         x += col_widths[i]
     # Vẽ dòng subheader (chú thích tiếng Anh, in nghiêng, căn giữa dọc)
     x = x0
@@ -143,7 +221,7 @@ def process_pdf(input_path, output_path):
         y = y0 + header_height + subheader_height + row_height * row_idx
         x = x0
         for col_idx, cell in enumerate(row):
-            page.insert_textbox([x, y, x+col_widths[col_idx], y+row_height], cell, fontsize=10, fontname="F0", color=(0,0,0), align=1)
+            page.insert_textbox([x, y + vertical_align_small, x+col_widths[col_idx], y+row_height], cell, fontsize=10, fontname="F0", color=(0,0,0), align=1)
             x += col_widths[col_idx]
         page.draw_rect([x0, y, x0+sum(col_widths), y+row_height], color=(0.5,0.5,0.5), width=0.7)
     # Các dòng tổng hợp trong bảng (không kẻ dọc bên trong, chỉ giữ kẻ dọc ngoài cùng)
@@ -154,32 +232,32 @@ def process_pdf(input_path, output_path):
     # Kẻ dọc ngoài cùng
     page.draw_line((x0, y_sum), (x0, y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0+sum(col_widths), y_sum), (x0+sum(col_widths), y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
-    page.insert_textbox([x0, y_sum, x0+sum(col_widths)-100, y_sum+row_height], "Cộng tiền hàng (Total before VAT):", fontsize=10, fontname="F0", align=2)
-    page.insert_textbox([x0+sum(col_widths)-100, y_sum, x0+sum(col_widths), y_sum+row_height], amount, fontsize=10, fontname="F0", align=2)
+    page.insert_textbox([x0, y_sum + vertical_align_small, x0+sum(col_widths)-100, y_sum+row_height], "Cộng tiền hàng (Total before VAT):", fontsize=10, fontname="F0", align=2)
+    page.insert_textbox([x0+sum(col_widths)-100, y_sum + vertical_align_small, x0+sum(col_widths), y_sum+row_height], amount, fontsize=10, fontname="F0", align=2)
     # Thuế suất GTGT và Tiền thuế GTGT
     y_sum += row_height
     page.draw_line((x0, y_sum), (x0+sum(col_widths), y_sum), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum+row_height), (x0+sum(col_widths), y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum), (x0, y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0+sum(col_widths), y_sum), (x0+sum(col_widths), y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
-    page.insert_textbox([x0, y_sum, x0+sum(col_widths)//2, y_sum+row_height], f"Thuế suất GTGT (VAT rate): {vat_rate}", fontsize=10, fontname="F0", align=2)
-    page.insert_textbox([x0+sum(col_widths)//2, y_sum, x0+sum(col_widths)-100, y_sum+row_height], "Tiền thuế GTGT (VAT amount):", fontsize=10, fontname="F0", align=2)
-    page.insert_textbox([x0+sum(col_widths)-100, y_sum, x0+sum(col_widths), y_sum+row_height], vat_amount, fontsize=10, fontname="F0", align=2)
+    page.insert_textbox([x0, y_sum + vertical_align_small, x0+sum(col_widths)//2, y_sum+row_height], f"Thuế suất GTGT (VAT rate): {vat_rate}", fontsize=10, fontname="F0", align=2)
+    page.insert_textbox([x0+sum(col_widths)//2, y_sum + vertical_align_small, x0+sum(col_widths)-100, y_sum+row_height], "Tiền thuế GTGT (VAT amount):", fontsize=10, fontname="F0", align=2)
+    page.insert_textbox([x0+sum(col_widths)-100, y_sum + vertical_align_small, x0+sum(col_widths), y_sum+row_height], vat_amount, fontsize=10, fontname="F0", align=2)
     # Tổng tiền thanh toán
     y_sum += row_height
     page.draw_line((x0, y_sum), (x0+sum(col_widths), y_sum), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum+row_height), (x0+sum(col_widths), y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum), (x0, y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0+sum(col_widths), y_sum), (x0+sum(col_widths), y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
-    page.insert_textbox([x0, y_sum, x0+sum(col_widths)-100, y_sum+row_height], "Tổng tiền thanh toán (Total amount):", fontsize=10, fontname="F0", render_mode=2, align=2)
-    page.insert_textbox([x0+sum(col_widths)-100, y_sum, x0+sum(col_widths), y_sum+row_height], total_payment, fontsize=10, fontname="F0", render_mode=2, align=2)
+    page.insert_textbox([x0, y_sum + vertical_align_small, x0+sum(col_widths)-100, y_sum+row_height], "Tổng tiền thanh toán (Total amount):", fontsize=10, fontname="F0", render_mode=2, align=2)
+    page.insert_textbox([x0+sum(col_widths)-100, y_sum + vertical_align_small, x0+sum(col_widths), y_sum+row_height], total_payment, fontsize=10, fontname="F0", render_mode=2, align=2)
     # Số tiền bằng chữ
     y_sum += row_height
     page.draw_line((x0, y_sum), (x0+sum(col_widths), y_sum), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum+row_height), (x0+sum(col_widths), y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0, y_sum), (x0, y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
     page.draw_line((x0+sum(col_widths), y_sum), (x0+sum(col_widths), y_sum+row_height), color=(0.5,0.5,0.5), width=0.7)
-    page.insert_textbox([x0, y_sum, x0+sum(col_widths), y_sum+row_height], f"Số tiền viết bằng chữ (Total amount in words): {total_text}", fontsize=10, fontname="F0", color=(1,0,0), align=0)
+    page.insert_textbox([x0, y_sum + vertical_align_small, x0+sum(col_widths), y_sum+row_height], f"Số tiền viết bằng chữ (Total amount in words): {total_text}", fontsize=10, fontname="F0", color=(1,0,0), align=0)
     # Đường dọc bảng chỉ vẽ cho phần dữ liệu hàng hóa
     x = x0
     y1 = y0
@@ -250,14 +328,22 @@ class PDFApp:
         if not self.pdf_path:
             messagebox.showerror("Lỗi", "Chưa chọn file PDF!")
             return
-        save_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
-        if save_path:
-            try:
-                process_pdf(self.pdf_path, save_path)
-                self.status_label.config(text=f"Đã tạo hóa đơn: {os.path.basename(save_path)}")
-                messagebox.showinfo("Thành công", f"Đã lưu file: {save_path}")
-            except Exception as e:
-                messagebox.showerror("Lỗi", str(e))
+        
+        # Tạo tên file tự động theo định dạng ngày giờ
+        current_time = datetime.now()
+        filename = f"hoa_don_{current_time.strftime('%Y%m%d_%H%M%S')}.pdf"
+        
+        # Lấy thư mục hiện tại để lưu file
+        # current_dir = os.getcwd()
+        # save_path = os.path.join(current_dir, filename)
+        save_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")], initialfile=filename, title="Lưu hóa đơn PDF")
+        
+        try:
+            process_pdf(self.pdf_path, save_path)
+            self.status_label.config(text=f"Đã tạo hóa đơn: {filename}")
+            messagebox.showinfo("Thành công", f"Đã lưu file: {save_path}")
+        except Exception as e:
+            messagebox.showerror("Lỗi", str(e))
 
 if __name__ == "__main__":
     root = tk.Tk()
