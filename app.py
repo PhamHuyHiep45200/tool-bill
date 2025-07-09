@@ -91,7 +91,38 @@ def create_simple_qr_code(text, size=80):
         print(f"Lỗi tạo QR code: {e}")
         return None
 
-def process_pdf(input_path, output_path):
+def extract_products_from_pdf(pdf_path):
+    """Trích xuất danh sách sản phẩm từ file PDF dạng text như test.pdf"""
+    try:
+        doc = fitz.open(pdf_path)
+        all_text = ""
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            text = page.get_text()
+            all_text += text + "\n"
+        # print("=== NỘI DUNG FILE PDF ===")
+        # print(all_text)
+        # Tách từng sản phẩm
+        products = []
+        current = {}
+        for line in all_text.splitlines():
+            line = line.strip()
+            if line.startswith('ten_nha_cung_cap:'):
+                if current:
+                    products.append(current)
+                    current = {}
+                current['ten_nha_cung_cap'] = line.split(':',1)[-1].strip()
+            elif ':' in line:
+                key, value = line.split(':',1)
+                current[key.strip()] = value.strip()
+        if current:
+            products.append(current)
+        return products
+    except Exception as e:
+        print(f"Lỗi extract_products_from_pdf: {e}")
+        return []
+
+def process_pdf(input_path, output_path, products=None):
     # Dữ liệu mẫu hóa đơn (có thể lấy từ extract_info_from_pdf nếu muốn động)
     company = "CÔNG TY TNHH THƯƠNG MẠI - DỊCH VỤ KENJO VIỆT NAM"
     address = "183/12/17 Bùi Minh Trực, Phường 5, Quận 8, Thành Phố Hồ Chí Minh, Việt Nam"
@@ -105,16 +136,39 @@ def process_pdf(input_path, output_path):
     customer_address = "22 Đào Duy Anh, Phường 09, Quận Phú Nhuận, Thành phố Hồ Chí Minh, Việt Nam"
     payment_method = "TM/CK"
     bank_account = ""
-    product = "Ghế massage JS680"
-    unit = "Chiếc"
-    quantity = "1"
-    unit_price = "30.000.000"
-    amount = "30.000.000"
     vat_rate = "8%"
     vat_amount = "2.400.000"
     total_payment = "32.400.000"
     total_text = "Ba mươi hai triệu, bốn trăm nghìn đồng chẵn"
     signer = "Nguyễn Tiến Khoa"
+    # Nếu có products thì lấy dữ liệu từ products
+    if products and len(products) > 0:
+        table_data = []
+        for idx, prod in enumerate(products, 1):
+            table_data.append([
+                str(idx),
+                prod.get('ten_hang_hoa', ''),
+                prod.get('don_vi_tinh', ''),
+                prod.get('so_luong', ''),
+                prod.get('don_gia', ''),
+                prod.get('thanh_tien', '')
+            ])
+        # Bổ sung dòng trống nếu chưa đủ 10 dòng
+        while len(table_data) < 10:
+            table_data.append(["", "", "", "", "", ""])
+        # Lấy tổng tiền, tổng thanh toán từ sản phẩm cuối cùng (nếu có)
+        amount = products[-1].get('tong_tien', '0')
+        total_payment = amount
+    else:
+        # Dữ liệu mẫu nếu không có products
+        product = "Ghế massage JS680"
+        unit = "Chiếc"
+        quantity = "1"
+        unit_price = "30.000.000"
+        amount = "30.000.000"
+        table_data = [
+            ["1", product, unit, quantity, unit_price, amount],
+        ] + [["", "", "", "", "", ""] for _ in range(9)]
     # Tạo file PDF mới
     doc = fitz.open()
     page = doc.new_page(width=595, height=842)  # A4 size
@@ -187,18 +241,6 @@ def process_pdf(input_path, output_path):
         ("Số lượng", "(Quantity)"),
         ("Đơn giá", "(Unit Price)"),
         ("Thành tiền", "(Amount)")
-    ]
-    table_data = [
-        ["1", product, unit, quantity, unit_price, amount],
-        ["", "", "", "", "", ""],
-        ["", "", "", "", "", ""],
-        ["", "", "", "", "", ""],
-        ["", "", "", "", "", ""],
-        ["", "", "", "", "", ""],
-        ["", "", "", "", "", ""],
-        ["", "", "", "", "", ""],
-        ["", "", "", "", "", ""],
-        ["", "", "", "", "", ""]
     ]
     # Header bảng: 2 dòng
     x0, y0 = 30, y_table
@@ -307,6 +349,7 @@ class PDFApp:
         self.root.title("PDF Invoice Tool")
         self.pdf_path = None
         self.result_path = None
+        self.products = []  # Lưu danh sách sản phẩm
 
         self.upload_btn = tk.Button(root, text="Upload PDF", command=self.upload_pdf)
         self.upload_btn.pack(pady=10)
@@ -323,6 +366,9 @@ class PDFApp:
             self.pdf_path = file_path
             self.status_label.config(text=f"Đã chọn: {os.path.basename(file_path)}")
             self.create_btn.config(state=tk.NORMAL)
+            # Đọc và in ra nội dung PDF, đồng thời lưu sản phẩm
+            self.products = extract_products_from_pdf(file_path)
+            print(f"Đã trích xuất {len(self.products)} sản phẩm từ file PDF!")
 
     def create_invoice(self):
         if not self.pdf_path:
@@ -339,7 +385,7 @@ class PDFApp:
         save_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")], initialfile=filename, title="Lưu hóa đơn PDF")
         
         try:
-            process_pdf(self.pdf_path, save_path)
+            process_pdf(self.pdf_path, save_path, self.products)
             self.status_label.config(text=f"Đã tạo hóa đơn: {filename}")
             messagebox.showinfo("Thành công", f"Đã lưu file: {save_path}")
         except Exception as e:
